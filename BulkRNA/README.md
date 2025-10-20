@@ -7,9 +7,10 @@
 ## Overview
 
 This module annotates each bulk RNA‑seq:
-**1-** MLL patients from 5 AML cohorts included in this study: https://osf.io/wq7gx/files
-**2-** NPM1-mutated Beat AML patients
-**3-** NPM1-mutated Alliance AML patients 
+
+1. MLL patients from 5 AML cohorts included in this study: https://osf.io/wq7gx/files
+2. NPM1-mutated Beat AML patients
+3. NPM1-mutated Alliance AML patients 
 
 For MLL, KMT2A-primitive vs KMT2A-committed labels were used from: https://aacrjournals.org/bloodcancerdiscov/article/6/4/307/763153/Single-cell-Transcriptional-Atlas-of-Human 
 
