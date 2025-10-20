@@ -25,10 +25,10 @@ BulkRNA/
 ├─ README.md                 # this file
 ├─ Analysis_MLL_BeatAML_Alliance.Rmd     # main narrative analysis (render to HTML/PDF)
 ├─ Data/                        # helper functions used by the Rmd
-│  ├─ Meta.csv                  # Ensembl→HGNC mapping & collapsing helpers
-│  ├─ KMT2A_Subtype.csv              # ssGSEA / weighted Z scoring utilities
-│  ├─ Mutations.csv               # ggplot themes, forest/stacked-bar, KM wrappers
-│  └─ utils.R                # small helpers (fmt_p, factor levels, etc.)
+│  ├─ meta.csv                  # Meta data for 5 AML cohorts
+│  ├─ KMT2A_Subtype.csv         # KMT2A primitive vs committed
+│  ├─ Mutations.csv             # Mutations for 5 AML cohorts 
+│  └─ meta_differentialGene.csv   # NPM1 committed vs primitive signature
 ├─ data/
 │  ├─ expression/            # input matrices (genes×samples; normalized)
 │  ├─ meta/                  # clinical/metadata: age, sex, mutations, etc.
@@ -38,8 +38,7 @@ BulkRNA/
 │     ├─ MLL.pdf
 │     ├─ Alliance.pdf
 │     ├─ BeatAML.pdf
-│     └─   
-```
+
 
 ## Data inputs
 
