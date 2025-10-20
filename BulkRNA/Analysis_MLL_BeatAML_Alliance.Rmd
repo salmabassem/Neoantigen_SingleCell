@@ -1,0 +1,895 @@
+---
+title: "AML MLL cohorts - Beat AML - Alliance"
+author: "Salma Abdelbaky"
+date: "2025-10-20"
+output: html_document
+---
+
+```{r, message = FALSE, warning = FALSE}
+
+library(DESeq2)
+library(ComplexHeatmap)
+library(biomaRt)
+library(survival)
+library(survminer)
+library(dplyr)
+library(forcats)
+library(ggplot2)
+library(survival)
+library(survminer)
+library(patchwork)
+
+
+
+```
+
+```{r, message = FALSE, warning = FALSE}
+
+
+setwd("C:/Salma/AML5Cohorts")
+
+pdf("All_MLL_Alliance_BeatAML.pdf", width = 12, height = 8)
+
+counts <- read.csv("normalised_and_corrected_counts.csv", row.names = 1)
+colnames(counts) <- gsub("\\..*$", "", colnames(counts))
+
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl", mirror = "useast") 
+bm <- getBM(attributes=c("ensembl_gene_id", "hgnc_symbol"), values=colnames(counts), mart=ensembl)
+hgnc.symbols <- bm$hgnc_symbol[match(colnames(counts), bm$ensembl_gene_id)]
+hgnc.symbols[hgnc.symbols == "" | is.na(hgnc.symbols)] <- colnames(counts)[which(hgnc.symbols == "" | is.na(hgnc.symbols)) ]
+colnames(counts) <- make.unique(hgnc.symbols)
+
+
+
+CT45 <- grep("*CT45", colnames(counts))
+CT45 <- counts[,CT45] 
+m <- which(colnames(CT45) == "CT45A11P")
+CT45 <- CT45[,-m]
+pheatmap(t(CT45), show_colnames = FALSE)
+
+
+Meta <- read.csv("meta.csv", row.names = 1)
+patients <- rownames(Meta[Meta$WHO_2022 %in% c("KMT2A", "NPM1"),])
+small_counts <- counts[patients,]
+CT45 <- CT45[patients,]
+
+pheatmap(t(CT45), show_colnames = FALSE)
+k <- cluster::pam(CT45, k = 2)
+y <- rownames(CT45)
+CT45 <- transform(apply(CT45, 2, as.numeric), row.names = y)
+anno <- as.data.frame(k[["clustering"]])
+colnames(anno) <- "cluster"
+
+CT45 <- transform(merge(CT45, anno["cluster"], by = 0), row.names =1)
+pheatmap(t(CT45[,-5]), show_colnames = FALSE, annotation_col = CT45["cluster"])
+
+CT45$cluster[CT45$cluster == 2] <- "High CT45"
+CT45$cluster[CT45$cluster == 1] <- "Low CT45"
+pheatmap(t(CT45[,-5]), show_colnames = FALSE, annotation_col = CT45["cluster"])
+
+CT45_5cohorts <- CT45
+
+```
+
+
+```{r, fig.width = 8, fig.height = 5}
+
+
+### ALL NPM1 and MLL patients in 5 cohorts 
+
+
+patients <- rownames(Meta[Meta$WHO_2022 %in% c("KMT2A", "NPM1"),])
+
+OS <- Meta[c("survival_years", "event")]
+OS$event[OS$event == "Dead"] <- 1
+OS$event[OS$event == "Alive"] <- 0
+OS$event <- as.numeric(OS$event)
+OS$survival_years <- as.numeric(OS$survival_years)
+
+
+dfout <- transform(merge(CT45, OS, by = 0,   all   = FALSE ), row.names = 1)
+dfout <- transform(merge(dfout, Meta[c("WHO_2022", "study")], by = 0,   all   = FALSE ), row.names = 1)
+dfout <- dfout[patients,]
+#dfout <- na.omit(dfout)
+
+pheatmap(t(dfout[,1:4]), show_colnames = FALSE, annotation_col = dfout[c("cluster", "WHO_2022", "study")], main = "KMT2A and NPM1 CT45 Clustering")
+
+
+dfout$cluster <- as.factor(dfout$cluster)
+survfit1<-survfit(Surv(time=survival_years, event=event) ~ cluster , data=dfout)
+ggsurvplot(survfit1, data = dfout, pval = TRUE, legend.title = "CT45 cluster", palette = c("turquoise3", "indianred2", "green", "black"), legend = "right", font.legend = 16, font.x = 16, font.y = 16) + ggtitle("Five AML Cohorts NPM1 and MLL")
+
+
+```
+## Adding Mutations 
+
+```{r, fig.width = 10, fig.height = 6}
+
+
+
+dfnew <- dfout
+
+Mutations <- read.csv("C:/Salma/AML5Cohorts/mutations.csv")
+IDH <- grep("*IDH", Mutations$gene_id)
+IDH <- Mutations[IDH,]
+rownames(IDH) <- gsub("X", "", rownames(IDH))
+IDH$sample_id <- gsub("X", "", IDH$sample_id)
+
+dfnew$IDH <- ifelse(rownames(dfnew) %in% IDH$sample_id, 1, 0)
+
+IDH <- grep("*FLT3_ITD", Mutations$gene_id)
+IDH <- Mutations[IDH,]
+rownames(IDH) <- gsub("X", "", rownames(IDH))
+IDH$sample_id <- gsub("X", "", IDH$sample_id)
+dfnew$FLT3ITD <- ifelse(rownames(dfnew) %in% IDH$sample_id, 1, 0)
+
+
+IDH <- grep("*TET2", Mutations$gene_id)
+IDH <- Mutations[IDH,]
+rownames(IDH) <- gsub("X", "", rownames(IDH))
+IDH$sample_id <- gsub("X", "", IDH$sample_id)
+dfnew$TET2 <- ifelse(rownames(dfnew) %in% IDH$sample_id, 1, 0)
+
+ggsurvplot(survfit1, data = dfnew, facet.by = "FLT3ITD",  pval = TRUE, legend.title = "CT45 cluster", palette = c("turquoise3", "indianred2", "green", "black"), font.legend = 16, font.x = 16, font.y = 16) + ggtitle("Five AML Cohorts NPM1 and MLL")
+
+ggsurvplot(survfit1, data = dfnew, facet.by = "WHO_2022",  pval = TRUE, legend.title = "CT45 cluster", palette = c("turquoise3", "indianred2", "green", "black"), font.legend = 16, font.x = 16, font.y = 16) + ggtitle("Five AML Cohorts NPM1 and MLL")
+
+
+dfout <- dfnew
+
+```
+
+## MLL Patients 
+
+
+```{r, fig.width = 8, fig.height = 6}
+
+library(dplyr)
+
+#load("C:/Users/abde34/OneDrive - The Ohio State University Wexner Medical Center/NPM1 Work/NPM1/AML_RNA_All.Rda")
+
+
+KMT2AType <- read.csv("KMT2A Subtype.csv", row.names = 1)
+dfType <- transform(merge(dfout, KMT2AType, by = 0), row.names = 1)
+dfType <- transform(merge(dfType, Meta[c("FAB", "clusters", "age")], by = 0), row.names = 1)
+
+
+table(dfType$cluster, dfType$KMT2A_Subgroup)
+dfType$FABnum <- gsub("*M", "", dfType$FAB)
+dfType$FABnum <- as.numeric(dfType$FABnum)
+
+pheatmap(t(dfType[,1:4]), annotation_col = dfType[c("cluster", "KMT2A_Subgroup", "ICC_2022")], show_colnames = FALSE )
+pheatmap(t(dfType[,1:4]), annotation_col = dfType[c("cluster", "KMT2A_Subgroup", "study")], show_colnames = FALSE )
+
+
+chisq.test(as.factor(dfType$cluster), as.factor(dfType$KMT2A_diagnosis))
+table(dfType$cluster, dfType$KMT2A_diagnosis)
+
+
+chisq.test(as.factor(dfType$cluster), as.factor(dfType$clusters))
+table(dfType$cluster, dfType$clusters)
+
+
+chisq.test(as.factor(dfType$cluster), as.factor(dfType$KMT2A_Subgroup))
+table(dfType$cluster, dfType$KMT2A_Subgroup)
+
+
+survfit1<-survfit(Surv(time=survival_years, event=event) ~ cluster  , data=dfType)
+ggsurvplot(survfit1, data = dfType, pval = TRUE, legend.title = "CT45 cluster", palette = c("turquoise3", "indianred2", "green", "black"), legend = "right", font.legend = 20, font.x = 20, font.y = 20)
+
+
+
+
+```
+
+
+```{r}
+
+d <- dfType %>%
+  dplyr::select(survival_years, event, cluster, KMT2A_Subgroup, age, KMT2A_diagnosis, FAB, clusters) %>%
+  filter(!is.na(cluster),
+         !is.na(KMT2A_Subgroup), !is.na(age)) %>%
+  mutate(
+    cluster = fct_relevel(as.factor(cluster), "High CT45", "Low CT45"), # keeps your ref level
+    KMT2A_Subgroup = as.factor(KMT2A_Subgroup), 
+    KMT2A_diagnosis = as.factor(KMT2A_diagnosis), 
+    FAB = as.factor(FAB), 
+    clusters = as.factor(clusters)
+  )
+
+d$cluster <- factor(d$cluster, levels = c("High CT45","Low CT45"))
+d$KMT2A_Subgroup <- factor(d$KMT2A_Subgroup)
+d$KMT2A_diagnosis <- factor(d$KMT2A_diagnosis)
+d$clusters <- factor(d$clusters)
+d$FAB <- factor(d$FAB)
+
+# ---- Panel A: CT45 vs KMT2A association (Fisher + OR) ----
+tab <- table(d$cluster, d$KMT2A_Subgroup)
+ft  <- fisher.test(tab)                # 2x2: gives OR and p-value
+or  <- unname(ft$estimate)
+ci  <- ft$conf.int
+fmt_p <- function(p) if (p < 0.001) "<0.001" else sprintf("= %.3f", p)
+
+
+
+assoc_df <- d %>%
+  filter(!is.na(KMT2A_Subgroup), !is.na(cluster)) %>%
+  dplyr::count(KMT2A_Subgroup, cluster) %>%
+  group_by(KMT2A_Subgroup) %>%
+  mutate(prop = n / sum(n),
+         lab_y = cumsum(prop) - prop/2) %>%   # label in the middle of each segment
+  ungroup()
+
+
+
+pA1 <- ggplot(assoc_df, aes(x = KMT2A_Subgroup, y = prop, fill = cluster)) +
+  geom_col(width = 0.75, color = "white", linewidth = 0.3) +
+  geom_text(aes(label = n, y = prop/1.5),
+            position = position_stack(vjust = 0.9), size = 3.8, color = "white") +
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(mult = c(0, 0.02))) +
+  scale_fill_manual(values = c("High CT45" = "turquoise3", "Low CT45" = "indianred2")) +
+  labs(x = NULL, y = "Proportion within KMT2A subgroup",
+       fill = "CT45 cluster",
+       subtitle = sprintf("Fisher’s p %s; OR = %.2f (95%% CI %.2f–%.2f)",
+                          fmt_p(ft$p.value), or, ci[1], ci[2])) +
+  theme_bw(base_size = 18) +
+  theme(legend.position = "top",
+        plot.subtitle = element_text(size = 11))
+
+
+# ---- Panel A: CT45 vs KMT2A association (Fisher + OR) ----
+tab <- table(d$cluster, d$KMT2A_diagnosis)
+ft  <- fisher.test(tab)                # 2x2: gives OR and p-value
+or  <- unname(ft$estimate)
+ci  <- ft$conf.int
+fmt_p <- function(p) if (p < 0.001) "<0.001" else sprintf("= %.3f", p)
+
+
+assoc_df <- as.data.frame(tab)
+names(assoc_df) <- c("cluster","KMT2A_diagnosis","n")
+# proportions within each KMT2A subgroup
+assoc_df <- merge(
+  assoc_df,
+  aggregate(n ~ KMT2A_diagnosis, assoc_df, sum),
+  by = "KMT2A_diagnosis", suffixes = c("", "_tot")
+)
+assoc_df$prop <- assoc_df$n / assoc_df$n_tot
+
+pA2 <- ggplot(assoc_df, aes(x = KMT2A_diagnosis, y = prop, fill = cluster)) +
+  geom_col(width = 0.75, color = "white", linewidth = 0.3) +
+  geom_text(aes(label = n, y = prop/1.5),
+            position = position_stack(vjust = 0.9), size = 3.8, color = "white") +
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(mult = c(0, 0.02))) +
+  scale_fill_manual(values = c("High CT45" = "turquoise3", "Low CT45" = "indianred2")) +
+  labs(x = NULL, y = "Proportion within KMT2A subgroup",
+       fill = "CT45 cluster",
+       subtitle = sprintf("Fisher’s p %s; OR = %.2f (95%% CI %.2f–%.2f)",
+                          fmt_p(ft$p.value), or, ci[1], ci[2])) +
+  theme_bw(base_size = 18) +
+  theme(legend.position = "top",
+        plot.subtitle = element_text(size = 11), axis.text.x = element_text(size = 11, angle = 45, hjust = 0.9))
+
+
+p <- pA1 + pA2
+
+p
+
+# ---- Panel B: Multivariable Cox forest (CT45 vs KMT2A vs age) ----
+
+
+d <- dfType %>%
+  dplyr::select(survival_years, event, cluster, KMT2A_Subgroup, age, KMT2A_diagnosis, FAB, clusters) %>%
+  filter(!is.na(cluster),
+         !is.na(KMT2A_Subgroup), !is.na(age)) %>%
+  mutate(
+    cluster = fct_relevel(as.factor(cluster), "High CT45", "Low CT45"), # keeps your ref level
+    KMT2A_Subgroup = as.factor(KMT2A_Subgroup), 
+    KMT2A_diagnosis = as.factor(KMT2A_diagnosis), 
+    FAB = as.factor(FAB), 
+    clusters = as.factor(clusters)
+  )
+
+d <- transform(merge(d, dfnew[c("IDH", "TET2", "FLT3ITD")], by = 0), row.names = 1)
+
+d$cluster <- factor(d$cluster, levels = c("Low CT45", "High CT45"))
+d$KMT2A_Subgroup <- factor(d$KMT2A_Subgroup)
+d$KMT2A_diagnosis <- factor(d$KMT2A_diagnosis)
+d$clusters <- factor(d$clusters)
+d$FAB <- factor(d$FAB)
+d$IDH <- factor(d$IDH)
+d$TET2 <- factor(d$TET2)
+d$FLT3ITD <- factor(d$FLT3ITD)
+
+
+fit <- coxph(Surv(survival_years, event) ~ cluster + KMT2A_Subgroup + age + TET2 + FLT3ITD,  data = d)
+
+coefs <- summary(fit)$coefficients
+conf  <- suppressMessages(confint(fit))  # 95% CI on log-HR
+forest_df <- data.frame(
+  term = rownames(coefs),
+  HR   = exp(coefs[, "coef"]),
+  lo   = exp(conf[, 1]),
+  hi   = exp(conf[, 2]),
+  p    = coefs[, "Pr(>|z|)"],
+  row.names = NULL,
+  check.names = FALSE
+)
+
+# nice labels
+forest_df$label <- forest_df$term
+forest_df$label <- sub("^cluster", "CT45: ", forest_df$label)
+forest_df$label <- sub("^KMT2A_Subgroup", "KMT2A subgroup: ", forest_df$label)
+forest_df$label[forest_df$term == "age"] <- "Age (per year)"
+
+# order top-to-bottom as written
+forest_df$label <- factor(forest_df$label, levels = rev(forest_df$label))
+
+xmax <- max(4, max(forest_df$hi, na.rm = TRUE)*1.05)
+xmin <- min(0.5, min(forest_df$lo, na.rm = TRUE)*0.9)
+
+pB <- ggplot(forest_df, aes(x = HR, y = label)) +
+  geom_vline(xintercept = 1, linetype = 2, linewidth = 0.4) +
+  geom_point(size = 2.6) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.15, linewidth = 0.6) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 3, 4), limits = c(xmin, xmax)) +
+  labs(x = "Hazard ratio (log scale)", y = NULL,
+       subtitle = sprintf("Model: Surv ~ CT45 cluster + KMT2A subgroup + age (n = %d, events = %d)",
+                          fit$n, fit$nevent)) +
+  theme_bw(base_size = 14) +
+  theme(axis.text.y = element_text(size = 14),
+        plot.subtitle = element_text(size = 10)) 
+
+
+pB
+
+# KM per KMT2A subgroup, curves split by CT45 cluster
+sf <- survfit(Surv(survival_years, event) ~ cluster + KMT2A_Subgroup, data = d)
+pKM <- ggsurvplot(
+  sf, data = d, facet.by = "KMT2A_Subgroup",
+  legend.title = "CT45 cluster",
+  palette = c("turquoise3", "indianred2"),
+  risk.table = TRUE, risk.table.height = 0.18,
+  pval = TRUE,            # per-facet p if supported; if not, compute and add manually
+  xlab = "Time (years)", ylab = "Overall survival"
+)
+
+
+pKM
+
+
+
+
+```
+
+
+
+## ICAMs and NCAMs with mutations? 
+
+```{r, fig.width = 10, fig.height = 6.5}
+
+
+KMT2AType <- read.csv("KMT2A Subtype.csv", row.names = 1)
+dfType <- transform(merge(dfout, KMT2AType, by = 0), row.names = 1)
+
+
+ICAM3 <- grep("^ICAM1$|ICAM2$|ICAM3$|NCAM1$|^SOX4$", colnames(counts))
+ICAMstmp <- as.data.frame(counts[,ICAM3])
+temp <- transform(merge( dfType, ICAMstmp, by = 0), row.names = 1)
+
+
+
+genes <- c("ICAM3","ICAM2","ICAM1","NCAM1")
+df_long <- temp %>%
+  dplyr::select(cluster, KMT2A_Subgroup, all_of(genes)) %>%
+  pivot_longer(cols = all_of(genes), names_to = "gene", values_to = "expr")
+
+p <- ggplot(df_long, aes(x = cluster, y = expr, fill = cluster)) +
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.signif") +
+  facet_grid(KMT2A_Subgroup ~ gene, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = NULL, y = "Expression") +
+  theme_bw() +
+  theme(legend.position = "bottom", element_text(size = 20), axis.text.x = element_text(size = 12), legend.text = element_text(size = 12), axis.title.y  = element_text(size = 14, face = "bold"), 
+         strip.text.x = element_text(size = 14, face = "bold"),   # top facet labels (gene names)
+    strip.text.y = element_text(size = 14, face = "bold"))
+
+p
+
+
+```
+
+# Beat AML 
+
+
+
+```{r}
+
+
+## From Committed vs primitive paper - results of differential analysis between two clusters from authors: 
+
+diff <- read.csv("C:/Users/abde34/Downloads/meta_differentialGene.csv")
+
+
+
+expr_mat <- as.matrix(AML_RNA$Beat_AML$RNAseq)
+rownames(expr_mat) <- make.unique(toupper(rownames(expr_mat)))
+
+
+library(dplyr)
+library(singscore)
+
+sig <- diff %>%
+  transmute(GENE = toupper(GENENAME), estimate, fdr) %>%
+  group_by(GENE) %>% slice_max(order_by = abs(estimate), n = 1) %>% ungroup()
+
+alpha <- 0.05
+
+prim_genes <- sig %>% filter(fdr <= alpha, estimate < 0) %>% pull(GENE)  # note: < 0
+comm_genes <- sig %>% filter(fdr <= alpha, estimate > 0) %>% pull(GENE)  # note: > 0
+
+prim_use <- intersect(toupper(prim_genes), rownames(expr_mat))
+comm_use <- intersect(toupper(comm_genes), rownames(expr_mat))
+
+param <- ssgseaParam(
+  exprData  = expr_mat,
+  geneSets  = list(Primitive = prim_use, Committed = comm_use),
+  alpha     = 0.25,
+  normalize = TRUE
+)
+ss <- gsva(param)
+
+score <- ss["Primitive", ] - ss["Committed", ]
+call  <- ifelse(score > 0, "NPM1-primitive-like", "NPM1-committed-like")
+
+calls <- data.frame(sample = colnames(expr_mat),
+                    score  = as.numeric(score),
+                    call   = call, row.names = NULL)
+rownames(calls) <- calls$sample
+
+```
+
+
+```{r}
+
+
+temp <- AML_RNA$Beat_AML$Metadata
+temp <- transform(merge(temp, calls, by = 0), row.names = 1)
+temp <- filter(temp, temp$NPM1 == "NPM1")
+
+
+
+d <- temp
+# ---- Panel A: CT45 vs KMT2A association (Fisher + OR) ----
+tab <- table(d$cluster, d$call)
+ft  <- fisher.test(tab)                # 2x2: gives OR and p-value
+or  <- unname(ft$estimate)
+ci  <- ft$conf.int
+fmt_p <- function(p) if (p < 0.001) "<0.001" else sprintf("= %.3f", p)
+
+
+
+assoc_df <- d %>%
+  filter(!is.na(call), !is.na(cluster)) %>%
+  dplyr::count(call, cluster) %>%
+  group_by(call) %>%
+  mutate(prop = n / sum(n),
+         lab_y = cumsum(prop) - prop/2) %>%   # label in the middle of each segment
+  ungroup()
+
+
+
+pA1 <- ggplot(assoc_df, aes(x = call, y = prop, fill = cluster)) +
+  geom_col(width = 0.75, color = "white", linewidth = 0.3) +
+  geom_text(aes(label = n, y = prop/1.2),
+            position = position_stack(vjust = 0.9), size = 3.8, color = "white") +
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(mult = c(0, 0.02))) +
+  scale_fill_manual(values = c("High_CT45" = "turquoise3", "Low_CT45" = "indianred2")) +
+  labs(x = NULL, y = "Proportion within NPM1 subgroup",
+       fill = "CT45 cluster",
+       subtitle = sprintf("Fisher’s p %s; OR = %.2f (95%% CI %.2f–%.2f)",
+                          fmt_p(ft$p.value), or, ci[1], ci[2])) +
+  theme_bw(base_size = 18) +
+  theme(legend.position = "top",
+        plot.subtitle = element_text(size = 11))
+
+
+mt <- AML_RNA$Beat_AML$Mutations
+colnames(mt) <- paste0("Mut_", colnames(mt))
+temp <- transform(merge(temp, mt, by = 0), row.names = 1)
+
+
+pFLT3 <-survfit1 <-survfit(Surv(time=OS, event= Status) ~ cluster , data=  temp )
+ ggsurvplot(survfit1, data = temp, facet.by = "Mut_FLT3_ITD",  pval = TRUE, legend.title = "CT45 cluster", palette = c("turquoise3", "indianred2", "green", "black"), font.legend = 16, font.x = 16, font.y = 16, title = "Alliance NPM1")
+
+
+ 
+fit <- coxph(Surv(OS, Status) ~ cluster + call + Age +    Mut_FLT3_ITD  + Mut_IDH2_p140 + Mut_IDH1 +  Mut_TET2 + BlastsPB + LymphocytesPB + Sex,  data = temp)
+
+coefs <- summary(fit)$coefficients
+conf  <- suppressMessages(confint(fit))  # 95% CI on log-HR
+forest_df <- data.frame(
+  term = rownames(coefs),
+  HR   = exp(coefs[, "coef"]),
+  lo   = exp(conf[, 1]),
+  hi   = exp(conf[, 2]),
+  p    = coefs[, "Pr(>|z|)"],
+  row.names = NULL,
+  check.names = FALSE
+)
+
+# nice labels
+forest_df$label <- forest_df$term
+forest_df$label <- sub("^cluster", "CT45: ", forest_df$label)
+#forest_df$label <- sub("^KMT2A_Subgroup", "KMT2A subgroup: ", forest_df$label)
+forest_df$label[forest_df$term == "age"] <- "Age (per year)"
+
+# order top-to-bottom as written
+forest_df$label <- factor(forest_df$label, levels = rev(forest_df$label))
+
+xmax <- max(4, max(forest_df$hi, na.rm = TRUE)*1.05)
+xmin <- min(0.5, min(forest_df$lo, na.rm = TRUE)*0.9)
+
+pB <- ggplot(forest_df, aes(x = HR, y = label)) +
+  geom_vline(xintercept = 1, linetype = 2, linewidth = 0.4) +
+  geom_point(size = 2.6) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.15, linewidth = 0.6) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 3, 4), limits = c(xmin, xmax)) +
+  labs(x = "Hazard ratio (log scale)", y = NULL,
+       subtitle = sprintf("Model: Surv ~ CT45 cluster + NPM1 subgroup + age (n = %d, events = %d)",
+                          fit$n, fit$nevent)) +
+  theme_bw(base_size = 14) +
+  theme(axis.text.y = element_text(size = 14),
+        plot.subtitle = element_text(size = 10)) 
+
+
+
+sf <- survfit(Surv(OS, Status) ~ cluster + call, data = d)
+pKM <- ggsurvplot(
+  sf, data = d, facet.by = "call",
+  legend.title = "CT45 cluster",
+  palette = c("turquoise3", "indianred2"),
+  risk.table = TRUE, risk.table.height = 0.18,
+  pval = TRUE,            # per-facet p if supported; if not, compute and add manually
+  xlab = "Time (years)", ylab = "Overall survival"
+)
+
+
+
+surv_to_patch <- function(gsp, heights = c(3,1)) {
+  has_tbl <- !is.null(gsp[["table"]])
+  if (has_tbl) {
+    # build a patchwork layout from curve + table
+    patchwork::wrap_plots(list(gsp$plot, gsp$table),
+                          ncol = 1, heights = heights)
+  } else {
+    gsp$plot
+  }
+}
+
+sp1 <- surv_to_patch(pFLT3)   # curve (+ table if present)
+sp2 <- surv_to_patch(pKM)
+
+final_fig <- ((pA1 | pB) )
+
+              
+final_fig
+pFLT3
+pKM
+
+
+
+```
+
+```{r, fig.width = 10, fig.height = 6.5}
+
+
+ICAM3 <- grep("^ICAM1$|ICAM2$|ICAM3$|NCAM1$|^SOX4$", rownames(expr_mat))
+ICAMstmp <- as.data.frame(expr_mat[ICAM3,])
+temp <- transform(merge( temp, t(ICAMstmp), by = 0), row.names = 1)
+
+
+temp$call[temp$call == "NPM1-committed-like"] <- "Committed"
+temp$call[temp$call == "NPM1-primitive-like"] <- "Primitive"
+
+
+genes <- c("ICAM3","ICAM2","ICAM1","NCAM1")
+df_long <- temp %>%
+  dplyr::select(cluster, call, all_of(genes)) %>%
+  pivot_longer(cols = all_of(genes), names_to = "gene", values_to = "expr")
+
+p <- ggplot(df_long, aes(x = cluster, y = expr, fill = cluster)) +
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.signif") +
+  facet_grid(call ~ gene, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = NULL, y = "Expression") +
+  theme_bw() +
+  theme(legend.position = "bottom", element_text(size = 20), axis.text.x = element_text(size = 12), legend.text = element_text(size = 12), axis.title.y  = element_text(size = 14, face = "bold"), 
+         strip.text.x = element_text(size = 14, face = "bold"),   # top facet labels (gene names)
+    strip.text.y = element_text(size = 14, face = "bold"))
+
+p + ggtitle("Beat AML")
+
+
+```
+
+
+
+
+## Alliance 
+
+
+```{r}
+
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(ComplexHeatmap)
+library(patchwork)
+
+#load(file = "mofa_epitype_fill_rna.Rda")
+mRNA <- mofa_epitype_fill_rna@data$mRNA$group1
+load("C:/Users/abde34/OneDrive - The Ohio State University Wexner Medical Center/NPM1 Work/NPM1/Outcome.Rda")
+
+ens <- sub("\\..*$", "", rownames(mRNA))  
+map <- AnnotationDbi::select(org.Hs.eg.db,
+                             keys     = unique(ens),
+                             keytype  = "ENSEMBL",
+                             columns  = c("SYMBOL"))
+
+rownames(map) <- make.unique(map$ENSEMBL)
+mRNA <- transform(merge(map, mRNA, by = 0), row.names = 1)
+mRNA$SYMBOL <- ifelse(is.na(mRNA$SYMBOL), mRNA$ENSEMBL, mRNA$SYMBOL)
+rownames(mRNA) <- make.unique(mRNA$SYMBOL)
+mRNA <- mRNA[,-c(1:2)]
+
+CT45 <- grep("*CT45", rownames(mRNA))
+CT45 <- t(mRNA[CT45, ])
+k <- cluster::pam(CT45, k = 2)
+y <- rownames(CT45)
+CT45 <- transform(apply(CT45, 2, as.numeric), row.names = y)
+
+
+anno <- as.data.frame(k[["clustering"]])
+colnames(anno)[1] <- "cluster"
+anno$cluster[anno$cluster == 1] <- "High_CT45"
+anno$cluster[anno$cluster == 2] <- "Low_CT45"
+pheatmap(t(CT45), cluster_rows=T, cluster_cols = T, show_colnames = F, show_rownames = T, annotation_col = anno, clustering_method = "centroid", main = "Alliance NPM1 CT45 Heatmap")
+MainCluster <- anno
+CT45$CT45all <- rowMeans(CT45)
+
+
+CT45 <- transform(merge(CT45, Outcome, by = 0), row.names = 1)
+CT45 <- transform(merge(CT45, anno, by = 0), row.names =1)
+
+CT45$sstat <- as.character(CT45$sstat)
+CT45$sstat[CT45$sstat == "dead"] <- 1
+CT45$sstat[CT45$sstat == "alive"] <- 0
+CT45$survyr <- as.numeric(CT45$survyr)
+CT45$sstat <- as.numeric(CT45$sstat)
+
+CT45$cluster <- as.factor(CT45$cluster)
+
+CT45 <- transform(merge(CT45, t(mofa_epitype_fill_rna@data$Mutations1Percent$group1), by = 0), row.names =1)
+
+
+survfit1 <-survfit(Surv(time=survyr, event= sstat) ~ cluster , data=  CT45 )
+ ggsurvplot(survfit1, data = CT45, facet.by = "M.FLT3ITD",  pval = TRUE, legend.title = "CT45 cluster", palette = c("turquoise3", "indianred2", "green", "black"), font.legend = 16, font.x = 16, font.y = 16, title = "Alliance NPM1")
+
+
+
+
+## Add Clinical Data
+
+CT45 <- transform(merge(CT45, t(mofa_epitype_fill_rna@data$ClinicalCont$group1), by = 0), row.names = 1)
+CT45 <- transform(merge(CT45, t(mofa_epitype_fill_rna@data$ClinicalBin$group1), by = 0), row.names = 1)
+
+
+fit <- coxph(Surv(survyr, sstat) ~ cluster + M.FLT3ITD + M.IDH2 + M.IDH1 + M.DNMT3A_R882  +  newbmblasts + newpbblasts + WBC + SEX ,   data = CT45)
+
+coefs <- summary(fit)$coefficients
+conf  <- suppressMessages(confint(fit))  # 95% CI on log-HR
+forest_df <- data.frame(
+  term = rownames(coefs),
+  HR   = exp(coefs[, "coef"]),
+  lo   = exp(conf[, 1]),
+  hi   = exp(conf[, 2]),
+  p    = coefs[, "Pr(>|z|)"],
+  row.names = NULL,
+  check.names = FALSE
+)
+
+# nice labels
+forest_df$label <- forest_df$term
+forest_df$label <- sub("^cluster", "CT45: ", forest_df$label)
+
+# order top-to-bottom as written
+forest_df$label <- factor(forest_df$label, levels = rev(forest_df$label))
+
+xmax <- max(4, max(forest_df$hi, na.rm = TRUE)*1.05)
+xmin <- min(0.5, min(forest_df$lo, na.rm = TRUE)*0.9)
+
+pB <- ggplot(forest_df, aes(x = HR, y = label)) +
+  geom_vline(xintercept = 1, linetype = 2, linewidth = 0.4) +
+  geom_point(size = 2.6) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.15, linewidth = 0.6) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 3, 4), limits = c(xmin, xmax)) +
+  labs(x = "Hazard ratio (log scale)", y = NULL,
+       subtitle = sprintf("Model: Surv ~ CT45 cluster + NPM1 subgroup + age (n = %d, events = %d)",
+                          fit$n, fit$nevent)) +
+  theme_bw(base_size = 14) +
+  theme(axis.text.y = element_text(size = 14),
+        plot.subtitle = element_text(size = 10)) 
+
+pB
+
+```
+
+
+
+```{r}
+expr_mat <- as.matrix(mRNA)
+rownames(expr_mat) <- toupper(rownames(expr_mat))
+
+prim_genes <- sig %>% filter(fdr <= alpha, estimate < 0) %>% pull(GENE)  # note: < 0
+comm_genes <- sig %>% filter(fdr <= alpha, estimate > 0) %>% pull(GENE)  # note: > 0
+
+prim_use <- intersect(toupper(prim_genes), rownames(expr_mat))
+comm_use <- intersect(toupper(comm_genes), rownames(expr_mat))
+
+param <- ssgseaParam(
+  exprData  = expr_mat,
+  geneSets  = list(Primitive = prim_use, Committed = comm_use),
+  alpha     = 0.25,
+  normalize = TRUE
+)
+ss <- gsva(param)
+
+score <- ss["Primitive", ] - ss["Committed", ]
+call  <- ifelse(score > 0, "NPM1-primitive-like", "NPM1-committed-like")
+
+calls <- data.frame(sample = colnames(expr_mat),
+                    score  = as.numeric(score),
+                    call   = call, row.names = NULL)
+rownames(calls) <- calls$sample
+
+
+
+temp <- CT45
+temp <- transform(merge(temp, calls, by = 0), row.names = 1)
+
+
+d <- temp
+# ---- Panel A: CT45 vs KMT2A association (Fisher + OR) ----
+tab <- table(d$cluster, d$call)
+ft  <- fisher.test(tab)                # 2x2: gives OR and p-value
+or  <- unname(ft$estimate)
+ci  <- ft$conf.int
+fmt_p <- function(p) if (p < 0.001) "<0.001" else sprintf("= %.3f", p)
+
+
+assoc_df <- d %>%
+  filter(!is.na(call), !is.na(cluster)) %>%
+  dplyr::count(call, cluster) %>%
+  group_by(call) %>%
+  mutate(prop = n / sum(n),
+         lab_y = cumsum(prop) - prop/2) %>%   # label in the middle of each segment
+  ungroup()
+
+
+
+pA1 <- ggplot(assoc_df, aes(x = call, y = prop, fill = cluster)) +
+  geom_col(width = 0.75, color = "white", linewidth = 0.3) +
+  geom_text(aes(label = n, y = prop/1.2),
+            position = position_stack(vjust = 0.9), size = 3.8, color = "white") +
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(mult = c(0, 0.02))) +
+  scale_fill_manual(values = c("High_CT45" = "turquoise3", "Low_CT45" = "indianred2")) +
+  labs(x = NULL, y = "Proportion within NPM1 subgroup",
+       fill = "CT45 cluster",
+       subtitle = sprintf("Fisher’s p %s; OR = %.2f (95%% CI %.2f–%.2f)",
+                          fmt_p(ft$p.value), or, ci[1], ci[2])) +
+  theme_bw(base_size = 18) +
+  theme(legend.position = "top",
+        plot.subtitle = element_text(size = 11))
+
+
+
+fit <- coxph(Surv( survyr, sstat) ~ cluster + call + M.FLT3ITD + M.IDH2 + M.IDH1 + M.DNMT3A_R882  +  newbmblasts + newpbblasts + WBC + SEX ,  data = temp)
+
+coefs <- summary(fit)$coefficients
+conf  <- suppressMessages(confint(fit))  # 95% CI on log-HR
+forest_df <- data.frame(
+  term = rownames(coefs),
+  HR   = exp(coefs[, "coef"]),
+  lo   = exp(conf[, 1]),
+  hi   = exp(conf[, 2]),
+  p    = coefs[, "Pr(>|z|)"],
+  row.names = NULL,
+  check.names = FALSE
+)
+
+# nice labels
+forest_df$label <- forest_df$term
+forest_df$label <- sub("^cluster", "CT45: ", forest_df$label)
+#forest_df$label <- sub("^KMT2A_Subgroup", "KMT2A subgroup: ", forest_df$label)
+forest_df$label[forest_df$term == "age"] <- "Age (per year)"
+
+# order top-to-bottom as written
+forest_df$label <- factor(forest_df$label, levels = rev(forest_df$label))
+
+xmax <- max(4, max(forest_df$hi, na.rm = TRUE)*1.05)
+xmin <- min(0.5, min(forest_df$lo, na.rm = TRUE)*0.9)
+
+pB <- ggplot(forest_df, aes(x = HR, y = label)) +
+  geom_vline(xintercept = 1, linetype = 2, linewidth = 0.4) +
+  geom_point(size = 2.6) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.15, linewidth = 0.6) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 3, 4), limits = c(xmin, xmax)) +
+  labs(x = "Hazard ratio (log scale)", y = NULL,
+       subtitle = sprintf("Model: Surv ~ CT45 cluster + NPM1 subgroup + age (n = %d, events = %d)",
+                          fit$n, fit$nevent)) +
+  theme_bw(base_size = 14) +
+  theme(axis.text.y = element_text(size = 14),
+        plot.subtitle = element_text(size = 10)) 
+
+
+
+sf <- survfit(Surv( survyr, sstat) ~ cluster + call, data = d)
+pKM <- ggsurvplot(
+  sf, data = d, facet.by = "call",
+  legend.title = "CT45 cluster",
+  palette = c("turquoise3", "indianred2"),
+  risk.table = TRUE, risk.table.height = 0.18,
+  pval = TRUE,            # per-facet p if supported; if not, compute and add manually
+  xlab = "Time (years)", ylab = "Overall survival"
+)
+
+
+
+
+final_fig <- ((pA1 | pB) )
+final_fig
+pKM
+
+```
+
+
+```{r, fig.width = 10, fig.height = 6.5}
+
+
+ICAM3 <- grep("^ICAM1$|ICAM2$|ICAM3$|NCAM1$|^SOX4$", rownames(expr_mat))
+ICAMstmp <- as.data.frame(expr_mat[ICAM3,])
+temp <- transform(merge( temp, t(ICAMstmp), by = 0), row.names = 1)
+
+
+temp$call[temp$call == "NPM1-committed-like"] <- "Committed"
+temp$call[temp$call == "NPM1-primitive-like"] <- "Primitive"
+
+
+genes <- c("ICAM3","ICAM2","ICAM1","NCAM1")
+df_long <- temp %>%
+  dplyr::select(cluster, call, all_of(genes)) %>%
+  pivot_longer(cols = all_of(genes), names_to = "gene", values_to = "expr")
+
+p <- ggplot(df_long, aes(x = cluster, y = expr, fill = cluster)) +
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.signif") +
+  facet_grid(call ~ gene, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = NULL, y = "Expression") +
+  theme_bw() +
+  theme(legend.position = "bottom", element_text(size = 20), axis.text.x = element_text(size = 12), legend.text = element_text(size = 12), axis.title.y  = element_text(size = 14, face = "bold"), 
+         strip.text.x = element_text(size = 14, face = "bold"),   # top facet labels (gene names)
+    strip.text.y = element_text(size = 14, face = "bold"))
+
+p
+
+
+```
+
+
+```{r}
+
+dev.off()
+
+```
