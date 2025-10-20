@@ -4,73 +4,42 @@
 
 ---
 
-## Table of contents
-
-1. [Overview](#overview)
-2. [Repository layout](#repository-layout)
-3. [Data inputs](#data-inputs)
-4. [Environment & dependencies](#environment--dependencies)
-5. [Quick start](#quick-start)
-6. [Methods](#methods)
-
-   * [ID normalization (Ensembl → HGNC)](#id-normalization-ensembl--hgnc)
-   * [Signature scoring (ssGSEA / weighted Z)](#signature-scoring-ssgsea--weighted-z)
-   * [CT45 cluster association](#ct45-cluster-association)
-   * [Survival analysis](#survival-analysis)
-   * [Forest plot](#forest-plot)
-   * [Multi‑panel figure assembly](#multi-panel-figure-assembly)
-7. [Outputs](#outputs)
-8. [Tips for reproducibility](#tips-for-reproducibility)
-9. [Troubleshooting](#troubleshooting)
-10. [Citations](#citations)
-
----
-
 ## Overview
 
-This module annotates each bulk RNA‑seq sample as **NPM1‑primitive‑like** or **NPM1‑committed‑like**, relates those labels to **CT45 clusters**, and evaluates outcome differences with **Kaplan–Meier** and **Cox** models.
+This module annotates each bulk RNA‑seq:
+1- MLL patients from 5 AML cohorts included in this study: https://osf.io/wq7gx/files
+2- NPM1-mutated Beat AML patients
+3- NPM1-mutated Alliance AML patients 
 
-**Highlights**
+For MLL, KMT2A-primitive vs KMT2A-committed labels were used from: https://aacrjournals.org/bloodcancerdiscov/article/6/4/307/763153/Single-cell-Transcriptional-Atlas-of-Human 
 
-* Robust signature scoring using **ssGSEA (GSVA)** with the current parameter‑object API.
-* Safe handling of **gene identifiers** (Ensembl IDs → HGNC symbols; duplicate collapse).
-* Clear association visuals (100% stacked bars) and **forest plots** for multivariable models.
-* One‑click multi‑panel export via **patchwork**.
+For NPM1, **NPM1‑primitive‑like** or **NPM1‑committed‑like** signature was extracted from https://www.nature.com/articles/s41467-021-21233-0#Sec24
 
----
+Samples were annotated as **NPM1‑primitive‑like** or **NPM1‑committed‑like**, related to our **CT45 clusters**, followed by outcome differences evaluation with **Kaplan–Meier** and **Cox** models.
+
 
 ## Repository layout
-
-A suggested structure (adapt names to your repo):
 
 ```
 BulkRNA/
 ├─ README.md                 # this file
-├─ BulkRNA.Rmd               # main narrative analysis (render to HTML/PDF)
-├─ R/                        # helper functions used by the Rmd
-│  ├─ ids.R                  # Ensembl→HGNC mapping & collapsing helpers
-│  ├─ scoring.R              # ssGSEA / weighted Z scoring utilities
-│  ├─ plots.R                # ggplot themes, forest/stacked-bar, KM wrappers
+├─ Analysis_MLL_BeatAML_Alliance.Rmd     # main narrative analysis (render to HTML/PDF)
+├─ Data/                        # helper functions used by the Rmd
+│  ├─ Meta.csv                  # Ensembl→HGNC mapping & collapsing helpers
+│  ├─ KMT2A_Subtype.csv              # ssGSEA / weighted Z scoring utilities
+│  ├─ Mutations.csv               # ggplot themes, forest/stacked-bar, KM wrappers
 │  └─ utils.R                # small helpers (fmt_p, factor levels, etc.)
 ├─ data/
 │  ├─ expression/            # input matrices (genes×samples; normalized)
 │  ├─ meta/                  # clinical/metadata: age, sex, mutations, etc.
 │  └─ signatures/            # meta-analysis table (GENENAME, estimate, fdr)
 ├─ results/
-│  ├─ tables/
-│  │  ├─ npm1_calls_*.csv
-│  │  └─ cox_summary.csv
 │  └─ figures/
-│     ├─ assoc_ct45_vs_npm1.png
-│     ├─ km_by_call.png
-│     ├─ forest_cox.png
-│     └─ all_panels.png
-└─ renv/ (optional)          # if you use renv for reproducibility
+│     ├─ MLL.pdf
+│     ├─ Alliance.pdf
+│     ├─ BeatAML.pdf
+│     └─   
 ```
-
-> If you keep everything in a single `BulkRNA.Rmd`, that’s fine—consider moving long helper functions into `R/` to keep the Rmd narrative clean.
-
----
 
 ## Data inputs
 
@@ -79,7 +48,6 @@ BulkRNA/
 * **Signature table**: meta‑analysis of NPM1 primitive vs committed with columns `GENENAME`, `estimate`, `fdr`.
 
 > **Direction convention** used here: `estimate < 0` ⇒ **Primitive‑up**, `estimate > 0` ⇒ **Committed‑up**.
-
 ---
 
 ## Environment & dependencies
@@ -106,15 +74,6 @@ Render the analysis Rmd (adjust filename if needed):
 rmarkdown::render("BulkRNA/BulkRNA.Rmd")
 ```
 
-Or source the key steps from the console:
-
-```r
-source("BulkRNA/R/ids.R")
-source("BulkRNA/R/scoring.R")
-source("BulkRNA/R/plots.R")
-```
-
----
 
 ## Methods
 
@@ -154,17 +113,6 @@ ss <- GSVA::gsva(param)
 score <- ss["Primitive", ] - ss["Committed", ]
 call  <- ifelse(score > 0, "NPM1-primitive-like", "NPM1-committed-like")
 ```
-
-**Weighted Z (uses effect sizes directly):**
-
-```r
-w <- setNames(sig$estimate, toupper(sig$GENENAME))
-keep <- intersect(names(w), rownames(expr_sym))
-Z <- t( scale(t(expr_sym[keep, , drop=FALSE])) )
-score_z <- as.numeric(crossprod(matrix(w[keep], nrow=1), Z))
-call_z  <- ifelse(score_z > 0, "NPM1-primitive-like", "NPM1-committed-like")
-```
-
 ### CT45 cluster association
 
 Compute 100% stacked bars and Fisher’s exact test:
@@ -244,40 +192,6 @@ final_fig <- ((p_assoc | p_forest) / sp_km) +
   theme(legend.position = "top")
 ```
 
----
-
-## Outputs
-
-* `results/tables/`
-
-  * `npm1_calls_ssgsea.csv` or `npm1_calls_weightedZ.csv`
-  * `cox_summary.csv`
-* `results/figures/`
-
-  * `assoc_ct45_vs_npm1.png`
-  * `km_by_call.png` (with optional risk table)
-  * `forest_cox.png`
-  * `all_panels.png` (assembled)
-
----
-
-## Tips for reproducibility
-
-* Prefer **relative paths** (e.g., with `here::here()`), not absolute `C:/...`.
-* Keep large raw data outside the repo; add sample/synthetic data for examples.
-* Use `set.seed()` before resampling; capture `sessionInfo()` at the end of the Rmd.
-* Consider `renv` for portable environments.
-
----
-
-## Troubleshooting
-
-* **GSVA error (defunct API):** Use `ssgseaParam(...)` then `gsva(param)`.
-* **singscore error `argument is of length zero`:** One of the up/down sets is empty. Check overlaps with the matrix rownames.
-* **Ensembl IDs not matching:** Strip versions and map to symbols before scoring.
-* **`ggsurvplot` + patchwork errors:** Combine `$plot` and `$table` with `wrap_plots()` first.
-
----
 
 ## Citations
 
