@@ -67,7 +67,7 @@ BiocManager::install(c("GSVA","org.Hs.eg.db","AnnotationDbi","survminer"))
 Render the analysis Rmd (adjust filename if needed):
 
 ```r
-rmarkdown::render("BulkRNA/BulkRNA.Rmd")
+rmarkdown::render("BulkRNA/Analysis_MLL_BeatAML_Alliance.Rmd")
 ```
 
 
