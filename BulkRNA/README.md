@@ -30,15 +30,11 @@ BulkRNA/
 │  ├─ KMT2A_Subtype.csv         # KMT2A primitive vs committed
 │  ├─ Mutations.csv             # Mutations for 5 AML cohorts 
 │  └─ meta_differentialGene.csv   # NPM1 committed vs primitive signature
-├─ data/
-│  ├─ expression/            # input matrices (genes×samples; normalized)
-│  ├─ meta/                  # clinical/metadata: age, sex, mutations, etc.
-│  └─ signatures/            # meta-analysis table (GENENAME, estimate, fdr)
 ├─ results/
 │  └─ figures/
 │     ├─ MLL.pdf
 │     ├─ Alliance.pdf
-│     ├─ BeatAML.pdf
+      └─  BeatAML.pdf
 
 
 ## Data inputs
