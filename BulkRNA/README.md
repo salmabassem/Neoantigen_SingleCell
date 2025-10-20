@@ -173,22 +173,6 @@ p_forest <- ggplot(forest_df, aes(HR, label)) +
   labs(x = "Hazard ratio (log scale)") + theme_bw()
 ```
 
-### Multi‑panel figure assembly
-
-Use **patchwork** and extract the survival curve + risk table.
-
-```r
-wrap_surv <- function(gsp, heights = c(3,1)) {
-  if (!is.null(gsp$table)) patchwork::wrap_plots(list(gsp$plot, gsp$table), ncol = 1, heights = heights)
-  else gsp$plot
-}
-sp_km <- wrap_surv(km)
-final_fig <- ((p_assoc | p_forest) / sp_km) +
-  patchwork::plot_layout(guides = "collect") +
-  patchwork::plot_annotation(tag_levels = "A") &
-  theme(legend.position = "top")
-```
-
 
 ## Citations
 
